@@ -27,12 +27,39 @@ const initialState: FormState = {
   message: '',
 }
 
+const successMessages = [
+  'Your wish is in with us. Thank you',
+  'We are so happy you sent your wish',
+  'Your blessing means a lot to us',
+  'Thank you for being part of this moment',
+  'Your wish is with us and we are truly grateful',
+  'We really appreciate your warm words',
+  'That made our day so much brighter',
+  'Your wish means so much to us',
+  'We are touched by your kindness',
+  'Thank you for sharing your love with us',
+]
+
+async function parseJsonResponse(response: Response) {
+  const text = await response.text()
+
+  if (!text) {
+    return {}
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    throw new Error(`The API returned an unexpected response (${response.status}). Please check the deployed API URL.`)
+  }
+}
+
 export function RsvpForm() {
   const [form, setForm] = useState<FormState>(initialState)
   const [records, setRecords] = useState<RsvpRecord[]>([])
   const [submitted, setSubmitted] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
   const isAdminView = useMemo(() => {
     if (typeof window === 'undefined') return false
@@ -44,16 +71,17 @@ export function RsvpForm() {
   const fetchRecords = async () => {
     try {
       const response = await fetch(API_URL)
+
       if (!response.ok) {
-        throw new Error('Unable to load wishes')
+        const payload = await parseJsonResponse(response)
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'Unable to load wishes')
       }
 
-      const data = (await response.json()) as RsvpRecord[]
-      setRecords(Array.isArray(data) ? data : [])
-      setErrorMessage('')
+      const payload = await parseJsonResponse(response)
+      const data = Array.isArray(payload) ? payload : []
+      setRecords(data as RsvpRecord[])
     } catch {
       setRecords([])
-      setErrorMessage('Unable to load the wish list right now.')
     }
   }
 
@@ -76,7 +104,6 @@ export function RsvpForm() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setErrorMessage('')
 
     try {
       const response = await fetch(API_URL, {
@@ -90,20 +117,23 @@ export function RsvpForm() {
         }),
       })
 
-      const payload = (await response.json()) as { error?: string; record?: RsvpRecord }
+      const payload = (await parseJsonResponse(response)) as { error?: string; record?: RsvpRecord }
 
       if (!response.ok) {
-        throw new Error(payload.error || 'Unable to save your wish')
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'Unable to save your wish')
       }
 
       if (payload.record) {
         setRecords((current) => [payload.record as RsvpRecord, ...current])
       }
 
+      const randomMessage = successMessages[Math.floor(Math.random() * successMessages.length)]
+      setSuccessMessage(randomMessage)
       setSubmitted(true)
       setForm(initialState)
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Something went wrong while sending your wish.')
+    } catch {
+      setSubmitted(false)
+      setSuccessMessage('')
     }
   }
 
@@ -206,15 +236,9 @@ export function RsvpForm() {
           </p>
         </div>
 
-        {submitted ? (
+        {submitted && successMessage ? (
           <div className="rounded-2xl border border-[#d3e3d2] bg-[#eef7ed] px-4 py-3 text-sm text-[#2c5933]">
-            Thank you. Your wish has been saved successfully.
-          </div>
-        ) : null}
-
-        {errorMessage ? (
-          <div className="rounded-2xl border border-[#f0d1c4] bg-[#fff1ee] px-4 py-3 text-sm text-[#8a4735]">
-            {errorMessage}
+            {successMessage}
           </div>
         ) : null}
       </form>
